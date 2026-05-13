@@ -9,7 +9,7 @@ import org.keycloak.models.KeycloakSessionFactory;
 public class WebhookEventListenerProviderFactory implements EventListenerProviderFactory {
 
     private static final String PROVIDER_ID = "webhook-event-listener";
-    private static final String DEFAULT_WEBHOOK_URL = "http://localhost:8080/api/v1/keycloak/webhook";
+    private static final String DEFAULT_WEBHOOK_URL = "http://localhost:8081/api/v1/keycloak/webhook";
 
     private String webhookUrl;
 
