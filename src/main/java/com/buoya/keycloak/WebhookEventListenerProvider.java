@@ -5,17 +5,20 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Map;
-import java.util.StringJoiner;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.logging.Logger;
 import org.keycloak.events.Event;
 import org.keycloak.events.EventListenerProvider;
 import org.keycloak.events.admin.AdminEvent;
+import org.keycloak.events.admin.AuthDetails;
 
 public class WebhookEventListenerProvider implements EventListenerProvider {
 
     private static final Logger logger = Logger.getLogger(WebhookEventListenerProvider.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final HttpClient httpClient;
     private final String webhookUrl;
@@ -29,46 +32,17 @@ public class WebhookEventListenerProvider implements EventListenerProvider {
 
     @Override
     public void onEvent(Event event) {
-        sendWebhook(toJson(event));
+        sendWebhook(WebhookUserEventPayload.from(event));
     }
 
     @Override
     public void onEvent(AdminEvent event, boolean includeRepresentation) {
-        // Not forwarding admin events — add if needed
+        sendWebhook(WebhookAdminEventPayload.from(event, includeRepresentation));
     }
 
-    private String toJson(Event event) {
-        StringJoiner sj = new StringJoiner(",", "{", "}");
-        sj.add("\"type\":\"" + (event.getType() != null ? event.getType().name() : "UNKNOWN") + "\"");
-        sj.add("\"realmId\":\"" + escape(event.getRealmId()) + "\"");
-        sj.add("\"clientId\":\"" + escape(event.getClientId()) + "\"");
-        sj.add("\"userId\":\"" + escape(event.getUserId()) + "\"");
-        sj.add("\"sessionId\":\"" + escape(event.getSessionId()) + "\"");
-        sj.add("\"ipAddress\":\"" + escape(event.getIpAddress()) + "\"");
-        sj.add("\"time\":" + event.getTime());
-        sj.add("\"error\":\"" + escape(event.getError()) + "\"");
-        sj.add("\"details\":" + mapToJson(event.getDetails()));
-        return sj.toString();
-    }
-
-    private String mapToJson(Map<String, String> map) {
-        if (map == null || map.isEmpty()) {
-            return "{}";
-        }
-        StringJoiner sj = new StringJoiner(",", "{", "}");
-        for (Map.Entry<String, String> entry : map.entrySet()) {
-            sj.add("\"" + escape(entry.getKey()) + "\":\"" + escape(entry.getValue()) + "\"");
-        }
-        return sj.toString();
-    }
-
-    private String escape(String value) {
-        if (value == null) return "";
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    private void sendWebhook(String json) {
+    private void sendWebhook(Object payload) {
         try {
+            String json = objectMapper.writeValueAsString(payload);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(webhookUrl))
                     .header("Content-Type", "application/json")
@@ -93,5 +67,67 @@ public class WebhookEventListenerProvider implements EventListenerProvider {
 
     @Override
     public void close() {
+    }
+}
+
+record WebhookUserEventPayload(
+        String eventCategory,
+        boolean adminEvent,
+        String type,
+        String realmId,
+        String clientId,
+        String userId,
+        String sessionId,
+        String ipAddress,
+        long time,
+        String error,
+        Map<String, String> details) {
+
+    static WebhookUserEventPayload from(Event event) {
+        return new WebhookUserEventPayload(
+                "USER",
+                false,
+                event.getType() != null ? event.getType().name() : "UNKNOWN",
+                event.getRealmId(),
+                event.getClientId(),
+                event.getUserId(),
+                event.getSessionId(),
+                event.getIpAddress(),
+                event.getTime(),
+                event.getError(),
+                event.getDetails() != null ? event.getDetails() : Collections.emptyMap());
+    }
+}
+
+record WebhookAdminEventPayload(
+        String eventCategory,
+        boolean adminEvent,
+        String operationType,
+        String resourceType,
+        String resourcePath,
+        String realmId,
+        String clientId,
+        String userId,
+        String ipAddress,
+        long time,
+        String error,
+        String representation) {
+
+    static WebhookAdminEventPayload from(AdminEvent event, boolean includeRepresentation) {
+        AuthDetails authDetails = event.getAuthDetails();
+
+        return new WebhookAdminEventPayload(
+                "ADMIN",
+                true,
+                event.getOperationType() != null ? event.getOperationType().name() : "UNKNOWN",
+                event.getResourceType() != null ? event.getResourceType().name() : "UNKNOWN",
+                event.getResourcePath(),
+                authDetails != null ? authDetails.getRealmId() : null,
+                authDetails != null ? authDetails.getClientId() : null,
+                authDetails != null ? authDetails.getUserId() : null,
+                authDetails != null ? authDetails.getIpAddress() : null,
+                event.getTime(),
+                event.getError(),
+                includeRepresentation ? event.getRepresentation() : null);
     }
 }
