@@ -118,6 +118,7 @@ record WebhookAdminEventPayload(
 
     static WebhookAdminEventPayload from(AdminEvent event, boolean includeRepresentation) {
         AuthDetails authDetails = event.getAuthDetails();
+        String userId = event.getResourceType() == org.keycloak.events.admin.ResourceType.USER ? event.getResourceId() : null;
 
         return new WebhookAdminEventPayload(
                 "ADMIN",
@@ -125,10 +126,10 @@ record WebhookAdminEventPayload(
                 event.getOperationType() != null ? event.getOperationType().name() : "UNKNOWN",
                 event.getResourceType() != null ? event.getResourceType().name() : "UNKNOWN",
                 event.getResourcePath(),
-                authDetails != null ? authDetails.getRealmId() : null,
+                event.getRealmId(),
                 event.getRealmName(),
                 authDetails != null ? authDetails.getClientId() : null,
-                authDetails != null ? authDetails.getUserId() : null,
+                userId,
                 authDetails != null ? authDetails.getIpAddress() : null,
                 event.getTime(),
                 event.getError(),
